@@ -1,10 +1,9 @@
-## @vuepic/vue-datepicker
+## @waf2.0/vue-datepicker
 
 
 ### The most complete datepicker solution for Vue 3
 
-[![License](https://img.shields.io/npm/l/@vuepic/vue-datepicker)](https://github.com/Vuepic/vue-datepicker/blob/main/LICENSE) [![npm](https://img.shields.io/npm/v/@vuepic/vue-datepicker)](https://www.npmjs.com/package/@vuepic/vue-datepicker) ![Downloads](https://img.shields.io/npm/dm/@vuepic/vue-datepicker) [![Open issues](https://img.shields.io/github/issues-raw/Vuepic/vue-datepicker)](https://github.com/Vuepic/vue-datepicker/issues) ![CI](https://img.shields.io/github/actions/workflow/status/Vuepic/vue-datepicker/node.js.yml?branch=main&label=CI) ![Release date](https://img.shields.io/github/release-date/Vuepic/vue-datepicker)
-[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=Vuepic_vue-datepicker&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=Vuepic_vue-datepicker)
+[![License](https://img.shields.io/npm/l/@vuepic/vue-datepicker)](https://github.com/fanta759/vue-datepicker/blob/main/LICENSE) [![npm](https://img.shields.io/npm/v/@waf2.0/vue-datepicker)](https://www.npmjs.com/package/@waf2.0/vue-datepicker) ![Downloads](https://img.shields.io/npm/dm/@waf2.0/vue-datepicker) [![Open issues](https://img.shields.io/github/issues-raw/waf2.0/vue-datepicker)](https://github.com/fanta759/vue-datepicker/issues) ![CI](https://img.shields.io/github/actions/workflow/status/waf2.0/vue-datepicker/node.js.yml?branch=main&label=CI) ![Release date](https://img.shields.io/github/release-date/fanta759/vue-datepicker)
 
 
 
@@ -39,11 +38,11 @@
 ## Install
 
 ```shell
-yarn add @vuepic/vue-datepicker
+yarn add @waf2.0/vue-datepicker
 
 # or
 
-npm install @vuepic/vue-datepicker
+npm install @waf2.0/vue-datepicker
 ```
 
 Import and register component
@@ -54,8 +53,8 @@ Import and register component
 import { createApp } from 'vue';
 import App from './App.vue';
 
-import VueDatePicker from '@vuepic/vue-datepicker';
-import '@vuepic/vue-datepicker/dist/main.css';
+import VueDatePicker from '@waf2.0/vue-datepicker';
+import '@waf2.0/vue-datepicker/dist/main.css';
 
 const app = createApp(App);
 app.component('VueDatePicker', VueDatePicker);
@@ -65,8 +64,8 @@ app.component('VueDatePicker', VueDatePicker);
 
 ```vue
 <script>
-    import VueDatePicker from '@vuepic/vue-datepicker';
-    import '@vuepic/vue-datepicker/dist/main.css';
+    import VueDatePicker from '@waf2.0/vue-datepicker';
+    import '@waf2.0/vue-datepicker/dist/main.css';
     
     export default {
         components: { VueDatePicker }
@@ -90,6 +89,6 @@ Special thanks to our sponsors 🙏
 
 ## License
 
-Copyright © 2021-present [Vuepic](https://github.com/Vuepic)
+Copyright © 2021-present [Fanta759](https://github.com/Fanta759)
 
-[MIT](https://github.com/Vuepic/vue-datepicker/blob/master/LICENSE)
+[MIT](https://github.com/fanta759/vue-datepicker/blob/master/LICENSE)
