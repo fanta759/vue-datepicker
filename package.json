@@ -1,8 +1,8 @@
 {
-  "name": "@vuepic/vue-datepicker",
-  "version": "5.4.0",
+  "name": "@fanta759/vue-datepicker",
+  "version": "5.5.0",
   "description": "Datepicker component for Vue 3",
-  "author": "Vuepic",
+  "author": "Fanta759",
   "private": false,
   "license": "MIT",
   "homepage": "https://vue3datepicker.com",
@@ -46,7 +46,8 @@
     "lint": "run-s lint:style lint:lib",
     "lint:style": "stylelint --fix \"src/**/*.scss\"",
     "lint:lib": "eslint --fix \"src/**\" --ignore-pattern \"src/**/*.scss\"",
-    "format": "prettier --write src/"
+    "format": "prettier --write src/",
+    "release": "release-it"
   },
   "devDependencies": {
     "@rushstack/eslint-patch": "^1.3.2",
@@ -68,6 +69,7 @@
     "npm-run-all": "^4.1.5",
     "postcss": "^8.4.24",
     "prettier": "^2.8.8",
+    "release-it": "^15.11.0",
     "rimraf": "^5.0.1",
     "sass": "^1.63.6",
     "sass-loader": "^13.3.2",
