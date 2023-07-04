@@ -3,7 +3,7 @@
 
 ### The most complete datepicker solution for Vue 3
 
-[![License](https://img.shields.io/npm/l/@vuepic/vue-datepicker)](https://github.com/fanta759/vue-datepicker/blob/main/LICENSE) [![npm](https://img.shields.io/npm/v/@waf2.0/vue-datepicker)](https://www.npmjs.com/package/@waf2.0/vue-datepicker) ![Downloads](https://img.shields.io/npm/dm/@waf2.0/vue-datepicker) [![Open issues](https://img.shields.io/github/issues-raw/waf2.0/vue-datepicker)](https://github.com/fanta759/vue-datepicker/issues) ![CI](https://img.shields.io/github/actions/workflow/status/waf2.0/vue-datepicker/node.js.yml?branch=main&label=CI) ![Release date](https://img.shields.io/github/release-date/fanta759/vue-datepicker)
+[![License](https://img.shields.io/npm/l/@waf2.0/vue-datepicker)](https://github.com/fanta759/vue-datepicker/blob/main/LICENSE) [![npm](https://img.shields.io/npm/v/@waf2.0/vue-datepicker)](https://www.npmjs.com/package/@waf2.0/vue-datepicker) ![Downloads](https://img.shields.io/npm/dm/@waf2.0/vue-datepicker) [![Open issues](https://img.shields.io/github/issues-raw/fanta759/vue-datepicker)](https://github.com/fanta759/vue-datepicker/issues) ![CI](https://img.shields.io/github/actions/workflow/status/fanta759/vue-datepicker/node.js.yml?branch=main&label=CI) ![Release date](https://img.shields.io/github/release-date/fanta759/vue-datepicker)
 
 
 
