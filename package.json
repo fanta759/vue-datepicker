@@ -1,6 +1,6 @@
 {
   "name": "@waf2.0/vue-datepicker",
-  "version": "5.4.0",
+  "version": "5.5.0",
   "description": "Datepicker component for Vue 3",
   "author": "Fanta759",
   "private": false,
