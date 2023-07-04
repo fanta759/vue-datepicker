@@ -6,6 +6,9 @@
   "private": false,
   "license": "MIT",
   "homepage": "https://vue3datepicker.com",
+  "publishConfig": {
+    "access": "public"
+  },
   "types": "index.d.ts",
   "type": "module",
   "main": "dist/vue-datepicker.umd.cjs",
