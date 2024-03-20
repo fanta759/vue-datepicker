@@ -1,9 +1,9 @@
 <template>
-    <div :class="wrapperClass" ref="pickerWrapperRef">
+    <div ref="pickerWrapperRef" :class="wrapperClass" data-datepicker-instance>
         <DatepickerInput
             ref="inputRef"
-            :is-menu-open="isOpen"
             v-model:input-value="inputValue"
+            :is-menu-open="isOpen"
             v-bind="$props"
             @clear="clearValue"
             @open="openMenu"
@@ -20,37 +20,49 @@
                 <slot :name="slot" v-bind="args" />
             </template>
         </DatepickerInput>
-        <component v-if="isOpen" :is="teleport ? TeleportCmp : 'div'" v-bind="menuWrapProps">
-            <DatepickerMenu
-                v-if="isOpen"
-                ref="dpMenuRef"
-                :class="theme"
-                :style="!inline ? menuStyle : undefined"
-                :open-on-top="openOnTop"
-                :arr-map-values="arrMapValues"
-                v-bind="$props"
-                v-model:internal-model-value="internalModelValue"
-                @close-picker="closeMenu"
-                @select-date="selectDate"
-                @auto-apply="autoApplyValue"
-                @time-update="timeUpdate"
-                @flow-step="$emit('flow-step', $event)"
-                @update-month-year="$emit('update-month-year', $event)"
-                @invalid-select="$emit('invalid-select', internalModelValue)"
-                @invalid-fixed-range="$emit('invalid-fixed-range', $event)"
-                @recalculate-position="setMenuPosition"
-                @tooltip-open="$emit('tooltip-open', $event)"
-                @tooltip-close="$emit('tooltip-close', $event)"
-                @time-picker-open="$emit('time-picker-open', $event)"
-                @time-picker-close="$emit('time-picker-close', $event)"
-                @am-pm-change="$emit('am-pm-change', $event)"
-                @range-start="$emit('range-start', $event)"
-                @range-end="$emit('range-end', $event)"
-            >
-                <template v-for="(slot, i) in slotList" #[slot]="args" :key="i">
-                    <slot :name="slot" v-bind="{ ...args }" />
-                </template>
-            </DatepickerMenu>
+        <component :is="teleport ? TeleportCmp : 'div'" v-bind="teleportProps">
+            <transition :name="menuTransition(openOnTop)" :css="showTransition && !defaultedInline.enabled">
+                <div
+                    v-if="isOpen"
+                    ref="dpWrapMenuRef"
+                    v-bind="menuWrapProps"
+                    :class="{ 'dp--menu-wrapper': !defaultedInline.enabled }"
+                    :style="!defaultedInline.enabled ? menuStyle : undefined"
+                >
+                    <DatepickerMenu
+                        ref="dpMenuRef"
+                        v-bind="$props"
+                        v-model:internal-model-value="internalModelValue"
+                        :class="{ [theme]: true, 'dp--menu-wrapper': teleport }"
+                        :open-on-top="openOnTop"
+                        :no-overlay-focus="noOverlayFocus"
+                        :collapse="collapse"
+                        @close-picker="closeMenu"
+                        @select-date="selectDate"
+                        @auto-apply="autoApplyValue"
+                        @time-update="timeUpdate"
+                        @flow-step="$emit('flow-step', $event)"
+                        @update-month-year="$emit('update-month-year', $event)"
+                        @invalid-select="$emit('invalid-select', internalModelValue)"
+                        @auto-apply-invalid="$emit('invalid-select', $event)"
+                        @invalid-fixed-range="$emit('invalid-fixed-range', $event)"
+                        @recalculate-position="setMenuPosition"
+                        @tooltip-open="$emit('tooltip-open', $event)"
+                        @tooltip-close="$emit('tooltip-close', $event)"
+                        @time-picker-open="$emit('time-picker-open', $event)"
+                        @time-picker-close="$emit('time-picker-close', $event)"
+                        @am-pm-change="$emit('am-pm-change', $event)"
+                        @range-start="$emit('range-start', $event)"
+                        @range-end="$emit('range-end', $event)"
+                        @date-update="$emit('date-update', $event)"
+                        @invalid-date="$emit('invalid-date', $event)"
+                    >
+                        <template v-for="(slot, i) in slotList" #[slot]="args" :key="i">
+                            <slot :name="slot" v-bind="{ ...args }" />
+                        </template>
+                    </DatepickerMenu>
+                </div>
+            </transition>
         </component>
     </div>
 </template>
@@ -66,7 +78,6 @@
         watch,
         Teleport as TeleportCmp,
         nextTick,
-        reactive,
     } from 'vue';
 
     import DatepickerInput from '@/components/DatepickerInput.vue';
@@ -78,11 +89,12 @@
         mapSlots,
         useArrowNavigation,
         useState,
-        useUtils,
+        useTransitions,
+        useValidation,
     } from '@/composables';
     import { onClickOutside } from '@/directives/clickOutside';
     import { AllProps } from '@/props';
-    import { getNumVal } from '@/utils/util';
+    import { findNextFocusableElement, getNumVal } from '@/utils/util';
 
     import type {
         DynamicClass,
@@ -91,11 +103,12 @@
         DatepickerInputRef,
         ModelValue,
         MenuView,
-        ArrMapValues,
     } from '@/interfaces';
+    import { useDefaults } from '@/composables/defaults';
 
     const emit = defineEmits([
         'update:model-value',
+        'update:model-timezone-value',
         'text-submit',
         'closed',
         'cleared',
@@ -115,7 +128,16 @@
         'am-pm-change',
         'range-start',
         'range-end',
+        'date-update',
+        'invalid-date',
     ]);
+
+    defineOptions({
+        compatConfig: {
+            MODE: 3,
+        },
+    });
+
     const props = defineProps({
         ...AllProps,
     });
@@ -123,46 +145,58 @@
     const isOpen = ref(false);
     const modelValueRef = toRef(props, 'modelValue');
     const timezoneRef = toRef(props, 'timezone');
+    const dpWrapMenuRef = ref<HTMLElement | null>(null);
     const dpMenuRef = ref<DatepickerMenuRef | null>(null);
     const inputRef = ref<DatepickerInputRef | null>(null);
     const isInputFocused = ref(false);
     const pickerWrapperRef = ref<HTMLElement | null>(null);
-    const arrMapValues = reactive<ArrMapValues>({
-        disabledDates: null,
-        allowedDates: null,
-        highlightedDates: null,
-    });
+    const shouldFocusNext = ref(false);
+    const shiftKeyActive = ref(false);
+    const collapse = ref(false);
 
     const { setMenuFocused, setShiftKey } = useState();
     const { clearArrowNav } = useArrowNavigation();
-    const { validateDate, isValidTime, defaults, mapDatesArrToMap } = useUtils(props);
+    const { validateDate, isValidTime } = useValidation(props);
+    const {
+        defaultedTransitions,
+        defaultedTextInput,
+        defaultedInline,
+        defaultedConfig,
+        defaultedRange,
+        defaultedMultiDates,
+    } = useDefaults(props);
+    const { menuTransition, showTransition } = useTransitions(defaultedTransitions);
 
     onMounted(() => {
         parseExternalModelValue(props.modelValue);
-        if (!props.inline) {
-            const el = getScrollableParent(pickerWrapperRef.value);
-            el.addEventListener('scroll', onScroll);
+        nextTick().then(() => {
+            if (!defaultedInline.value.enabled) {
+                const el = getScrollableParent(pickerWrapperRef.value);
+                el?.addEventListener('scroll', onScroll);
 
-            window.addEventListener('resize', onResize);
-        }
+                window?.addEventListener('resize', onResize);
+            }
+        });
 
-        if (props.inline) {
+        if (defaultedInline.value.enabled) {
             isOpen.value = true;
         }
-        mapDatesArrToMap(arrMapValues);
+
+        window?.addEventListener('keyup', onKeyUp);
+        window?.addEventListener('keydown', onKeyDown);
     });
 
     onUnmounted(() => {
-        if (!props.inline) {
+        if (!defaultedInline.value.enabled) {
             const el = getScrollableParent(pickerWrapperRef.value);
-            if (el) {
-                el.removeEventListener('scroll', onScroll);
-            }
-            window.removeEventListener('resize', onResize);
+            el?.removeEventListener('scroll', onScroll);
+            window?.removeEventListener('resize', onResize);
         }
+        window?.removeEventListener('keyup', onKeyUp);
+        window?.removeEventListener('keydown', onKeyDown);
     });
 
-    const slotList = mapSlots(slots, 'all', props.presetRanges);
+    const slotList = mapSlots(slots, 'all', props.presetDates);
     const inputSlots = mapSlots(slots, 'input');
 
     watch(
@@ -173,8 +207,16 @@
         { deep: true },
     );
 
-    const { openOnTop, menuStyle, resetPosition, setMenuPosition, setInitialPosition, getScrollableParent } =
-        usePosition(dpMenuRef, inputRef, emit, props);
+    const { openOnTop, menuStyle, xCorrect, setMenuPosition, getScrollableParent, shadowRender } = usePosition({
+        menuRef: dpWrapMenuRef,
+        menuRefInner: dpMenuRef,
+        inputRef,
+        pickerWrapperRef,
+        inline: defaultedInline,
+        emit,
+        props,
+        slots,
+    });
 
     const {
         inputValue,
@@ -190,20 +232,28 @@
             dp__main: true,
             dp__theme_dark: props.dark,
             dp__theme_light: !props.dark,
-            dp__flex_display: props.inline,
-            dp__flex_display_with_input: props.inlineWithInput,
+            dp__flex_display: defaultedInline.value.enabled,
+            'dp--flex-display-collapsed': collapse.value,
+            dp__flex_display_with_input: defaultedInline.value.input,
         }),
     );
 
     const theme = computed(() => (props.dark ? 'dp__theme_dark' : 'dp__theme_light'));
+    const teleportProps = computed(() => {
+        return {
+            to: typeof props.teleport === 'boolean' ? 'body' : props.teleport,
+            disabled: !props.teleport || defaultedInline.value.enabled,
+        };
+    });
     const menuWrapProps = computed(() => {
-        if (props.teleport) {
-            return {
-                to: typeof props.teleport === 'boolean' ? 'body' : props.teleport,
-                disabled: props.inline,
-            };
-        }
         return { class: 'dp__outer_menu_wrap' };
+    });
+
+    const noOverlayFocus = computed(() => {
+        return (
+            defaultedInline.value.enabled &&
+            (props.timePicker || props.monthPicker || props.yearPicker || props.quarterPicker)
+        );
     });
 
     /**
@@ -212,7 +262,7 @@
      */
     const onScroll = (): void => {
         if (isOpen.value) {
-            if (props.closeOnScroll) {
+            if (defaultedConfig.value.closeOnScroll) {
                 closeMenu();
             } else {
                 setMenuPosition();
@@ -228,21 +278,34 @@
         if (isOpen.value) {
             setMenuPosition();
         }
+        const width = dpMenuRef.value?.$el.getBoundingClientRect().width;
+        collapse.value = document.body.offsetWidth <= width;
     };
 
-    const openMenu = async () => {
-        if (!props.disabled && !props.readonly) {
-            resetPosition();
-            await nextTick();
-            isOpen.value = true;
-            await nextTick();
-            setInitialPosition();
-            await nextTick();
-            setMenuPosition();
-            delete menuStyle.value.opacity;
-            if (!defaults.value.transitions?.menuAppear && props.transitions) {
-                dpMenuRef.value?.$el?.classList.add('dp__menu_transitioned');
+    const onKeyUp = (event: KeyboardEvent) => {
+        if (
+            event.key === 'Tab' &&
+            !defaultedInline.value.enabled &&
+            !props.teleport &&
+            defaultedConfig.value.tabOutClosesMenu
+        ) {
+            if (!pickerWrapperRef.value!.contains(document.activeElement)) {
+                closeMenu();
             }
+        }
+
+        shiftKeyActive.value = event.shiftKey;
+    };
+
+    const onKeyDown = (event: KeyboardEvent) => {
+        shiftKeyActive.value = event.shiftKey;
+    };
+
+    const openMenu = () => {
+        if (!props.disabled && !props.readonly) {
+            shadowRender(DatepickerMenu, props);
+            setMenuPosition(false);
+            isOpen.value = true;
 
             if (isOpen.value) {
                 emit('open');
@@ -263,9 +326,11 @@
     const clearValue = (): void => {
         inputValue.value = '';
         clearInternalValues();
+        inputRef.value?.setParsedDate(null);
         emit('update:model-value', null);
+        emit('update:model-timezone-value', null);
         emit('cleared');
-        if (props.closeOnClearValue) {
+        if (defaultedConfig.value.closeOnClearValue) {
             closeMenu();
         }
     };
@@ -275,10 +340,13 @@
         if (!date) return true;
         if (!Array.isArray(date) && validateDate(date)) return true;
         if (Array.isArray(date)) {
+            if (defaultedMultiDates.value.enabled) return true;
+
             if (date.length === 2 && validateDate(date[0]) && validateDate(date[1])) {
                 return true;
             }
-            return validateDate(date[0]);
+            if (defaultedRange.value.partialRange && !props.timePicker) return validateDate(date[0]);
+            return false;
         }
         return false;
     };
@@ -298,13 +366,13 @@
     const emitOnAutoApply = (ignoreClose: boolean): void => {
         updateTextInputWithDateTimeValue();
         emitModelValue();
-        if (props.closeOnAutoApply && !ignoreClose) {
+        if (defaultedConfig.value.closeOnAutoApply && !ignoreClose) {
             closeMenu();
         }
     };
 
     const updateTextInputWithDateTimeValue = () => {
-        if (inputRef.value && props.textInput) {
+        if (inputRef.value && defaultedTextInput.value.enabled) {
             inputRef.value.setParsedDate(internalModelValue.value);
         }
     };
@@ -319,8 +387,8 @@
             const isTimeValid = isValidTime(internalModelValue.value);
 
             if (isTimeValid && validateBeforeEmit()) {
-                if (props.range && Array.isArray(internalModelValue.value)) {
-                    if (props.partialRange || internalModelValue.value.length === 2) {
+                if (defaultedRange.value.enabled && Array.isArray(internalModelValue.value)) {
+                    if (defaultedRange.value.partialRange || internalModelValue.value.length === 2) {
                         emitOnAutoApply(ignoreClose);
                     }
                 } else {
@@ -335,7 +403,7 @@
      * update, just clears internal data
      */
     const clearInternalValues = (): void => {
-        if (!props.textInput) {
+        if (!defaultedTextInput.value.enabled) {
             internalModelValue.value = null;
         }
     };
@@ -344,31 +412,37 @@
      * Closes the menu and clears the internal data
      */
     const closeMenu = (): void => {
-        if (!props.inline) {
+        if (!defaultedInline.value.enabled) {
             if (isOpen.value) {
                 isOpen.value = false;
+                xCorrect.value = false;
                 setMenuFocused(false);
                 setShiftKey(false);
                 clearArrowNav();
                 emit('closed');
-                setInitialPosition();
                 if (inputValue.value) {
                     parseExternalModelValue(modelValueRef.value);
                 }
             }
             clearInternalValues();
+            emit('blur');
         }
     };
 
-    const setInputDate = (date: Date | Date[] | null, submit?: boolean): void => {
+    const setInputDate = (date: Date | Date[] | null, submit?: boolean, tabbed = false): void => {
         if (!date) {
             internalModelValue.value = null;
             return;
         }
-        internalModelValue.value = date;
-        if (submit) {
-            selectDate();
-            emit('text-submit');
+        const validDate = Array.isArray(date) ? !date.some((d) => !validateDate(d)) : validateDate(date);
+        const validTime = isValidTime(date);
+        if (validDate && validTime) {
+            internalModelValue.value = date;
+            if (submit) {
+                shouldFocusNext.value = tabbed;
+                selectDate();
+                emit('text-submit');
+            }
         }
     };
 
@@ -389,7 +463,7 @@
     };
 
     const handleInputFocus = () => {
-        if (props.textInput) {
+        if (defaultedTextInput.value.enabled) {
             isInputFocused.value = true;
             formatInputValue();
         }
@@ -398,9 +472,13 @@
     };
 
     const handleBlur = () => {
-        if (props.textInput) {
+        if (defaultedTextInput.value.enabled) {
             isInputFocused.value = false;
             parseExternalModelValue(props.modelValue);
+            if (shouldFocusNext.value) {
+                const el = findNextFocusableElement(pickerWrapperRef.value!, shiftKeyActive.value);
+                el?.focus();
+            }
         }
         emit('blur');
     };
@@ -415,18 +493,19 @@
     };
 
     const parseModel = (value?: ModelValue) => {
-        parseExternalModelValue(value || props.modelValue);
+        parseExternalModelValue(value ?? props.modelValue);
     };
 
     const switchView = (view: MenuView, instance?: number) => {
         dpMenuRef.value?.switchView(view, instance);
     };
 
-    onClickOutside(
-        dpMenuRef,
-        inputRef,
-        props.onClickOutside ? () => props.onClickOutside(validateBeforeEmit) : closeMenu,
-    );
+    const clickOutside = (validateBeforeEmit: () => boolean) => {
+        if (defaultedConfig.value.onClickOutside) return defaultedConfig.value.onClickOutside(validateBeforeEmit);
+        return closeMenu();
+    };
+
+    onClickOutside(dpWrapMenuRef, inputRef, () => clickOutside(validateBeforeEmit));
 
     defineExpose({
         closeMenu,
@@ -439,5 +518,6 @@
         setMonthYear,
         parseModel,
         switchView,
+        toggleMenu,
     });
 </script>

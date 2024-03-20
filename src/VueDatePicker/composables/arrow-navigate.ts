@@ -46,7 +46,10 @@ export const useArrowNavigation = () => {
             el = matrix.value[activeRow.value][selectedIndex.value];
         }
 
-        if (!el) {
+        if (!el && matrix.value[activeRow.value + (increment ? 1 : -1)]) {
+            activeRow.value = activeRow.value + (increment ? 1 : -1);
+            selectedIndex.value = increment ? 0 : matrix.value[activeRow.value].length - 1;
+        } else if (!el) {
             selectedIndex.value = increment ? selectedIndex.value - 1 : selectedIndex.value + 1;
         }
     };
@@ -59,14 +62,12 @@ export const useArrowNavigation = () => {
 
         if (!el) {
             activeRow.value = increment ? activeRow.value - 1 : activeRow.value + 1;
-        } else {
-            if (
-                matrix.value[activeRow.value] &&
-                !matrix.value[activeRow.value][selectedIndex.value] &&
-                selectedIndex.value !== 0
-            ) {
-                selectedIndex.value = matrix.value[activeRow.value].length - 1;
-            }
+        } else if (
+            matrix.value[activeRow.value] &&
+            !matrix.value[activeRow.value][selectedIndex.value] &&
+            selectedIndex.value !== 0
+        ) {
+            selectedIndex.value = matrix.value[activeRow.value].length - 1;
         }
     };
 

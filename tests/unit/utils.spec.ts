@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-    addHours,
     getDate,
     getHours,
     getMinutes,
@@ -9,15 +8,18 @@ import {
     getYear,
     set,
     setMonth,
-    subHours,
     addDays,
+    addMonths,
+    subMonths,
+    startOfWeek,
+    endOfWeek,
 } from 'date-fns';
-import { getTimezoneOffset, zonedTimeToUtc } from 'date-fns-tz';
 import { reactive } from 'vue';
 
 import {
     getArrayInArray,
     getDayNames,
+    getMapKey,
     getMonths,
     getNumVal,
     getYears,
@@ -25,22 +27,36 @@ import {
     isModelAuto,
 } from '@/utils/util';
 import {
-    dateToUtc,
+    assignDefaultTime,
+    checkPartialRangeValue,
+    checkRangeEnabled,
+    checkTimeMinMax,
+    formatDate,
+    getDaysInBetween,
+    getNextMonthYear,
     getTimeObj,
+    getWeekFromDate,
     isDateAfter,
     isDateBefore,
     isDateBetween,
+    isValidDate,
     parseFreeInput,
     resetDate,
     resetDateTime,
+    setDateMonthOrYear,
     setDateTime,
+    setDateTimeFromObj,
+    validateMaxDate,
+    validateMinDate,
+    validateMonthYear,
+    validateTime,
 } from '@/utils/date-utils';
-import { useTransitions, useUtils } from '@/composables';
+import { useDefaults, useTransitions } from '@/composables';
 
 import type { AllPropsType } from '@/props';
-import { defaultMultiCalendars, defaultTransitions } from '@/utils/defaults';
-import type { SixWeekMode } from '@/interfaces';
+import { defaultMultiCalendars, defaultTransitions, mapPropDates } from '@/utils/defaults';
 import { de } from 'date-fns/locale';
+import { localToTz } from '@/utils/timezone';
 
 const getCurrentTime = () => {
     return {
@@ -50,171 +66,13 @@ const getCurrentTime = () => {
     };
 };
 
+const getMinMax = () => {
+    const minDate = set(new Date(), { hours: 10, minutes: 30, seconds: 0, milliseconds: 0 });
+    const maxDate = set(new Date(), { hours: 22, minutes: 15, seconds: 0, milliseconds: 0 });
+    return { minDate, maxDate };
+};
+
 describe('Utils and date utils formatting', () => {
-    it('Should get calendar days', () => {
-        const { getCalendarDays } = useUtils({ weekStart: 1, hideOffsetDates: false } as AllPropsType);
-
-        const days = getCalendarDays(0, 2021);
-
-        expect(days).toHaveLength(5);
-        expect(days[0].days).toHaveLength(7);
-        expect(days[0].days[0].text).toEqual(28);
-    });
-
-    it('Should get calendar days starting from sunday', () => {
-        const { getCalendarDays } = useUtils({ weekStart: 0, hideOffsetDates: false } as AllPropsType);
-
-        const days = getCalendarDays(0, 2021);
-        expect(days).toHaveLength(6);
-        expect(days[0].days[0].text).toEqual(27);
-    });
-
-    it('Should get calendar days with hidden offset dats', () => {
-        const { getCalendarDays } = useUtils({ weekStart: 1, hideOffsetDates: true } as AllPropsType);
-
-        const days = getCalendarDays(0, 2021);
-
-        expect(days).toHaveLength(5);
-        expect(days[0].days[0].text).toEqual('');
-    });
-
-    describe('getCalendar should get the correct weeks depending on six week mode', () => {
-        const getCalendarDaysWithSixWeekMode = (sixWeeks: boolean | SixWeekMode) => {
-            const { getCalendarDays } = useUtils({
-                weekStart: 1,
-                hideOffsetDates: false,
-                sixWeeks,
-            } as AllPropsType);
-
-            const jan = getCalendarDays(0, 2021); // ends on a sunday
-            const feb = getCalendarDays(1, 2021); // spans exactly 4 weeks from monday to sunday
-            const mar = getCalendarDays(2, 2021); // starts on a monday
-            const apr = getCalendarDays(3, 2021); // has five weeks with more days in the end week
-            const may = getCalendarDays(4, 2021); // has six weeks
-            const jun = getCalendarDays(5, 2021); // has five weeks with more days in the start week
-            return { jan, feb, mar, apr, may, jun };
-        };
-
-        it('In `false` mode, it should get only weeks that contain dates of the queried month', () => {
-            const { jan, feb, mar, apr, may, jun } = getCalendarDaysWithSixWeekMode(false);
-
-            expect(jan).toHaveLength(5);
-            expect(jan[0].days[0].text).toEqual(28);
-            expect(jan[4].days[6].text).toEqual(31);
-            expect(feb).toHaveLength(4);
-            expect(feb[0].days[0].text).toEqual(1);
-            expect(feb[3].days[6].text).toEqual(28);
-            expect(mar).toHaveLength(5);
-            expect(mar[0].days[0].text).toEqual(1);
-            expect(mar[4].days[6].text).toEqual(4);
-            expect(apr).toHaveLength(5);
-            expect(apr[0].days[0].text).toEqual(29);
-            expect(apr[4].days[6].text).toEqual(2);
-            expect(may).toHaveLength(6);
-            expect(may[0].days[0].text).toEqual(26);
-            expect(may[5].days[6].text).toEqual(6);
-            expect(jun).toHaveLength(5);
-            expect(jun[0].days[0].text).toEqual(31);
-            expect(jun[4].days[6].text).toEqual(4);
-        });
-
-        it('In `true` or `append` mode, it should return six weeks, padded to the end of the calendar', () => {
-            const appendResult = getCalendarDaysWithSixWeekMode('append');
-
-            expect(getCalendarDaysWithSixWeekMode(true)).toEqual(appendResult);
-
-            const { jan, feb, mar, apr, may, jun } = appendResult;
-
-            expect(jan).toHaveLength(6);
-            expect(jan[0].days[0].text).toEqual(28);
-            expect(jan[5].days[6].text).toEqual(7);
-            expect(feb).toHaveLength(6);
-            expect(feb[0].days[0].text).toEqual(1);
-            expect(feb[5].days[6].text).toEqual(14);
-            expect(mar).toHaveLength(6);
-            expect(mar[0].days[0].text).toEqual(1);
-            expect(mar[5].days[6].text).toEqual(11);
-            expect(apr).toHaveLength(6);
-            expect(apr[0].days[0].text).toEqual(29);
-            expect(apr[5].days[6].text).toEqual(9);
-            expect(may).toHaveLength(6);
-            expect(may[0].days[0].text).toEqual(26);
-            expect(may[5].days[6].text).toEqual(6);
-            expect(jun).toHaveLength(6);
-            expect(jun[0].days[0].text).toEqual(31);
-            expect(jun[5].days[6].text).toEqual(11);
-        });
-
-        it('In `prepend` mode, it should return six weeks, padded to the start of the calendar', () => {
-            const { jan, feb, mar, apr, may, jun } = getCalendarDaysWithSixWeekMode('prepend');
-
-            expect(jan).toHaveLength(6);
-            expect(jan[0].days[0].text).toEqual(21);
-            expect(jan[5].days[6].text).toEqual(31);
-            expect(feb).toHaveLength(6);
-            expect(feb[0].days[0].text).toEqual(18);
-            expect(feb[5].days[6].text).toEqual(28);
-            expect(mar).toHaveLength(6);
-            expect(mar[0].days[0].text).toEqual(22);
-            expect(mar[5].days[6].text).toEqual(4);
-            expect(apr).toHaveLength(6);
-            expect(apr[0].days[0].text).toEqual(22);
-            expect(apr[5].days[6].text).toEqual(2);
-            expect(may).toHaveLength(6);
-            expect(may[0].days[0].text).toEqual(26);
-            expect(may[5].days[6].text).toEqual(6);
-            expect(jun).toHaveLength(6);
-            expect(jun[0].days[0].text).toEqual(24);
-            expect(jun[5].days[6].text).toEqual(4);
-        });
-
-        it('In `center` mode, it should return six weeks, padded so that months that start with a full week get a week of leading offset', () => {
-            const { jan, feb, mar, apr, may, jun } = getCalendarDaysWithSixWeekMode('center');
-
-            expect(jan).toHaveLength(6);
-            expect(jan[0].days[0].text).toEqual(28);
-            expect(jan[5].days[6].text).toEqual(7);
-            expect(feb).toHaveLength(6);
-            expect(feb[0].days[0].text).toEqual(25);
-            expect(feb[5].days[6].text).toEqual(7);
-            expect(mar).toHaveLength(6);
-            expect(mar[0].days[0].text).toEqual(22);
-            expect(mar[5].days[6].text).toEqual(4);
-            expect(apr).toHaveLength(6);
-            expect(apr[0].days[0].text).toEqual(29);
-            expect(apr[5].days[6].text).toEqual(9);
-            expect(may).toHaveLength(6);
-            expect(may[0].days[0].text).toEqual(26);
-            expect(may[5].days[6].text).toEqual(6);
-            expect(jun).toHaveLength(6);
-            expect(jun[0].days[0].text).toEqual(31);
-            expect(jun[5].days[6].text).toEqual(11);
-        });
-
-        it('In `fair` mode, it should return six weeks, padded to start and end of the month depending on which has the smaller offset in the partial week', () => {
-            const { jan, feb, mar, apr, may, jun } = getCalendarDaysWithSixWeekMode('fair');
-
-            expect(jan).toHaveLength(6);
-            expect(jan[0].days[0].text).toEqual(28);
-            expect(jan[5].days[6].text).toEqual(7);
-            expect(feb).toHaveLength(6);
-            expect(feb[0].days[0].text).toEqual(25);
-            expect(feb[5].days[6].text).toEqual(7);
-            expect(mar).toHaveLength(6);
-            expect(mar[0].days[0].text).toEqual(22);
-            expect(mar[5].days[6].text).toEqual(4);
-            expect(apr).toHaveLength(6);
-            expect(apr[0].days[0].text).toEqual(29);
-            expect(apr[5].days[6].text).toEqual(9);
-            expect(may).toHaveLength(6);
-            expect(may[0].days[0].text).toEqual(26);
-            expect(may[5].days[6].text).toEqual(6);
-            expect(jun).toHaveLength(6);
-            expect(jun[0].days[0].text).toEqual(24);
-            expect(jun[5].days[6].text).toEqual(4);
-        });
-    });
-
     it('Should group array by 3', () => {
         const items = getArrayInArray(Array.from(Array(10).keys()));
 
@@ -238,14 +96,14 @@ describe('Utils and date utils formatting', () => {
 
     it('Should get day names by fallback to locale', () => {
         // Pass incorrect formatLocale
-        const days = getDayNames({}, 'de', 1);
+        const days = getDayNames(null, 'de', 1);
 
         expect(days).toHaveLength(7);
         expect(days[1]).toEqual('Di');
     });
 
     it('Should generate years', () => {
-        const years = getYears([2021, 2025]);
+        const years = getYears([2021, 2025], 'en-US');
 
         expect(years).toHaveLength(5);
         expect(years[1].value).toEqual(2022);
@@ -267,7 +125,7 @@ describe('Utils and date utils formatting', () => {
 
     it('Should get month values by fallback to locale', () => {
         // Pass incorrect formatLocale
-        const months = getMonths({}, 'de', 'long');
+        const months = getMonths(null, 'de', 'long');
 
         expect(months).toHaveLength(12);
         expect(months[0].text).toEqual('Januar');
@@ -275,7 +133,7 @@ describe('Utils and date utils formatting', () => {
 
     it('Should get default pattern', () => {
         const props = reactive({ enableTimePicker: true, is24: true, monthPicker: false });
-        const { getDefaultPattern } = useUtils(props as AllPropsType);
+        const { getDefaultPattern } = useDefaults(props as AllPropsType);
 
         const patternDef = getDefaultPattern();
         props.monthPicker = true;
@@ -319,35 +177,6 @@ describe('Utils and date utils formatting', () => {
         const parsed = parseFreeInput('2', parser, getCurrentTime());
 
         expect(getMonth(parsed as Date)).toEqual(2);
-    });
-
-    it('Should get UTC date', () => {
-        const date = new Date();
-        const utcDate = dateToUtc(date, false, false);
-
-        const utcString = set(zonedTimeToUtc(date, Intl.DateTimeFormat().resolvedOptions().timeZone), {
-            milliseconds: 0,
-        });
-
-        expect(utcString.toISOString()).toEqual(utcDate);
-    });
-
-    it('Should return UTC date with preserved value', () => {
-        const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-        const date = new Date();
-        const utcDate = dateToUtc(date, true, false);
-        const offset = getTimezoneOffset(timezone);
-        const mapHour = offset > 0 ? addHours : subHours;
-        const offsetHours = Math.floor((offset / (1000 * 60 * 60)) % 24);
-        const utcString = mapHour(
-            set(zonedTimeToUtc(date, Intl.DateTimeFormat().resolvedOptions().timeZone), {
-                milliseconds: 0,
-                seconds: 0,
-            }),
-            offsetHours,
-        );
-
-        expect(utcString.toISOString()).toEqual(utcDate);
     });
 
     it('Should parse text input date from the pattern array', () => {
@@ -398,22 +227,23 @@ describe('Utils and date utils formatting', () => {
         expect(transitions).toBeFalsy();
 
         const enabledTransitions = defaultTransitions({});
-        expect(enabledTransitions).toHaveProperty('menuAppear', '');
+        expect(enabledTransitions).toHaveProperty('menuAppearBottom', 'dp-menu-appear-bottom');
     });
 
     it('Should return proper multi-calendars default value', () => {
         const enabled = defaultMultiCalendars(true);
-        expect(enabled).toEqual(2);
+        expect(enabled.count).toEqual(2);
 
         const stringEnabled = defaultMultiCalendars('3');
-        expect(stringEnabled).toEqual(3);
+        expect(stringEnabled.count).toEqual(3);
 
         const invalid = defaultMultiCalendars(1);
-        expect(invalid).toEqual(2);
+        expect(invalid.count).toEqual(2);
     });
 
     it('Should return empty transition name', () => {
-        const { transitionName } = useTransitions(false);
+        const { defaultedTransitions } = useDefaults({ transitions: false } as AllPropsType);
+        const { transitionName } = useTransitions(defaultedTransitions);
         expect(transitionName.value(true)).toEqual('');
     });
 
@@ -452,5 +282,179 @@ describe('Utils and date utils formatting', () => {
         expect(timeObj).toHaveProperty('hours', getHours(now));
         expect(timeObj).toHaveProperty('minutes', getMinutes(now));
         expect(timeObj).toHaveProperty('seconds', getSeconds(now));
+    });
+
+    it('Should set time value', () => {
+        const timeObj = { hours: 10, minutes: 15, seconds: 0 };
+        const date = setDateTimeFromObj(timeObj);
+        expect(getHours(date)).toEqual(timeObj.hours);
+        expect(getMinutes(date)).toEqual(timeObj.minutes);
+        expect(getSeconds(date)).toEqual(timeObj.seconds);
+    });
+
+    it('Should check time min and max values', () => {
+        const { minDate, maxDate } = getMinMax();
+        const selectedDateBellowMin = set(new Date(), { hours: 9 });
+        const selectedValidDate = set(new Date(), { hours: 12 });
+        const selectedDateAboveMax = set(new Date(), { hours: 23 });
+
+        const minValid = checkTimeMinMax(null, minDate, 'min', selectedDateBellowMin, true);
+        expect(minValid).toBeFalsy();
+
+        const maxValid = checkTimeMinMax(null, maxDate, 'max', selectedDateAboveMax, true);
+        expect(maxValid).toBeFalsy();
+
+        const validMin = checkTimeMinMax(null, minDate, 'min', selectedValidDate, true);
+        expect(validMin).toBeTruthy();
+
+        const validMax = checkTimeMinMax(null, maxDate, 'max', selectedValidDate, true);
+        expect(validMax).toBeTruthy();
+    });
+
+    it('Should validate time', () => {
+        const date = set(new Date(), { hours: 15 });
+        const { minDate, maxDate } = getMinMax();
+
+        const aboveMin = validateTime(date, minDate, 'min', true);
+        expect(aboveMin).toBeTruthy();
+
+        const bellowMax = validateTime(date, maxDate, 'max', true);
+        expect(bellowMax).toBeTruthy();
+    });
+
+    it('Should check if date is valid date object', () => {
+        expect(isValidDate(null)).toBeFalsy();
+        expect(isValidDate(new Date())).toBeTruthy();
+        expect(isValidDate([new Date(), null])).toBeTruthy();
+        expect(isValidDate([null, new Date()])).toBeFalsy();
+        expect(isValidDate([new Date(), new Date()])).toBeTruthy();
+    });
+
+    it('Should check for range and partial range errors', () => {
+        try {
+            expect(checkRangeEnabled(() => ({}), false)).toThrowError();
+        } catch (e: any) {
+            expect(e.message).toEqual('"range" prop must be enabled!');
+        }
+
+        try {
+            expect(checkPartialRangeValue(false)).toThrowError();
+        } catch (e: any) {
+            expect(e.message).toEqual('"partial-range" prop must be enabled!');
+        }
+    });
+
+    it('Should format date', () => {
+        const singleDate = new Date();
+        const rangeDate = [new Date(), addMonths(new Date(), 1)];
+
+        const padWithZero = (value: number) => (value > 9 ? value : `0${value}`);
+
+        const getFormattedSingle = (date: Date) =>
+            `${padWithZero(getDate(date))}.${padWithZero(getMonth(date) + 1)}.${getYear(date)}`;
+
+        const formatFn = (date: Date | Date[]) => {
+            if (date) {
+                if (Array.isArray(date)) {
+                    return [getFormattedSingle(date[0]), getFormattedSingle(date[1])].join(rangeSeparator);
+                }
+                return getFormattedSingle(date);
+            }
+            return '';
+        };
+
+        const rangeSeparator = '---';
+        const pattern = 'dd.MM.yyyy';
+
+        const singleFormatted = formatDate(singleDate, null, null, rangeSeparator, false, pattern);
+        expect(singleFormatted).toEqual(formatFn(singleDate));
+
+        const multiFormatted = formatDate(rangeDate, null, null, rangeSeparator, false, pattern);
+        expect(multiFormatted).toEqual(formatFn(rangeDate));
+
+        const customFmt = formatDate(singleDate, formatFn, null, rangeSeparator, false, pattern);
+        expect(customFmt).toEqual(formatFn(singleDate));
+    });
+
+    it('Should validate min and max dates', () => {
+        const { minDate, maxDate } = getMinMax();
+        const date = addMonths(new Date(), 1);
+        const isMaxValid = validateMaxDate(getMonth(date), getYear(date), maxDate);
+        expect(isMaxValid).toBeFalsy();
+
+        const isMinValid = validateMinDate(getMonth(date), getYear(date), minDate);
+        expect(isMinValid).toBeTruthy();
+    });
+
+    it('Should validate month and year', () => {
+        const minDate = subMonths(new Date(), 3);
+        const maxDate = addMonths(new Date(), 3);
+
+        const isInvalid = validateMonthYear(new Date(), maxDate, minDate, false, false);
+        expect(isInvalid).toBeFalsy();
+
+        const invalid = validateMonthYear(addMonths(new Date(), 3), maxDate, minDate, true, true);
+        expect(invalid).toBeTruthy();
+    });
+
+    it('Should set month and year on a date value', () => {
+        const today = new Date(2023, 0, 1);
+        const month = 1;
+        const year = 2023;
+        const setDate = setDateMonthOrYear(today, month, year);
+        expect(getMonth(setDate)).toEqual(month);
+        expect(getYear(setDate)).toEqual(year);
+    });
+
+    it('Should assign default time model', () => {
+        const time = assignDefaultTime({ hours: 15 }, false);
+        expect(time.hours).toEqual(15);
+    });
+
+    it('Should get week from date', () => {
+        const week = getWeekFromDate(new Date(), 1);
+        const start = startOfWeek(new Date(), { weekStartsOn: 1 });
+        const end = endOfWeek(new Date(), { weekStartsOn: 1 });
+        expect(week[0]).toEqual(start);
+        expect(week[1]).toEqual(end);
+    });
+
+    it('Should get next month', () => {
+        const nextMonth = getMonth(addMonths(new Date(), 1));
+        const { month } = getNextMonthYear(new Date());
+
+        expect(nextMonth).toEqual(month);
+    });
+
+    it('Should get days in between', () => {
+        const inBetween = getDaysInBetween(new Date(), addDays(new Date(), 2));
+        expect(inBetween).toHaveLength(3);
+    });
+
+    it('Should map propDates value with and without timezone', async () => {
+        const today = resetDateTime(new Date());
+        const highlightFn = (date: any) => !!date;
+        const mappedDates = mapPropDates(today, today, [today], [today], highlightFn, [], {
+            timezone: undefined,
+            exactMatch: false,
+        });
+
+        expect(mappedDates.maxDate).toEqual(today);
+        expect(mappedDates.minDate).toEqual(today);
+        expect((mappedDates.disabledDates as Map<string, any>).get(getMapKey(today))).toEqual(today);
+        expect((mappedDates.allowedDates as Map<string, any>).get(getMapKey(today))).toEqual(today);
+        expect(mappedDates.highlight).toEqual(highlightFn);
+
+        const todayInTz = localToTz(today, 'UTC');
+        const mappedDatesInTimezone = mapPropDates(today, today, [today], [today], highlightFn, [], {
+            timezone: 'UTC',
+            exactMatch: false,
+        });
+
+        expect(mappedDatesInTimezone.maxDate).toEqual(todayInTz);
+        expect(mappedDatesInTimezone.minDate).toEqual(todayInTz);
+        expect((mappedDatesInTimezone.disabledDates as Map<string, any>).get(getMapKey(todayInTz))).toEqual(todayInTz);
+        expect((mappedDatesInTimezone.allowedDates as Map<string, any>).get(getMapKey(todayInTz))).toEqual(todayInTz);
+        expect(mappedDatesInTimezone.highlight).toEqual(highlightFn);
     });
 });

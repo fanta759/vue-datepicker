@@ -1,8 +1,18 @@
 import { unref } from 'vue';
-
-import type { IDefaultSelect, IMarker, MaybeElementRef, ModelValue } from '@/interfaces';
-import type { ComponentPublicInstance } from 'vue';
 import { format } from 'date-fns';
+
+import type {
+    Config,
+    DPElements,
+    IDefaultSelect,
+    IMarker,
+    MaybeElementRef,
+    ModelValue,
+    OverlayGridItem,
+} from '@/interfaces';
+import { type Locale } from 'date-fns';
+import type { ComponentPublicInstance } from 'vue';
+import { getDate } from '@/utils/date-utils';
 
 export const getArrayInArray = <T>(list: T[], increment = 3): T[][] => {
     const items = [];
@@ -58,10 +68,10 @@ export const getDayNames = (formatLocale: Locale | null, locale: string, weekSta
 /**
  * Generate array of years for selection display
  */
-export const getYears = (yearRange: number[] | string[], reverse?: boolean): IDefaultSelect[] => {
+export const getYears = (yearRange: number[] | string[], locale: string, reverse?: boolean): IDefaultSelect[] => {
     const years: IDefaultSelect[] = [];
     for (let year = +yearRange[0]; year <= +yearRange[1]; year++) {
-        years.push({ value: +year, text: `${year}` });
+        years.push({ value: +year, text: formatNumber(year, locale) });
     }
     return reverse ? years.reverse() : years;
 };
@@ -119,7 +129,7 @@ export const unrefElement = (elRef: MaybeElementRef): HTMLElement | null => {
     return (plain as ComponentPublicInstance)?.$el;
 };
 
-export const getDefaultMarker = (marker: IMarker): IMarker => Object.assign({ type: 'dot' }, marker);
+export const getDefaultMarker = (marker: IMarker): IMarker => ({ type: 'dot', ...(marker ?? {}) });
 
 export const isModelAuto = (modelValue: ModelValue): boolean => {
     if (Array.isArray(modelValue)) {
@@ -143,11 +153,6 @@ export const getNumVal = (num?: string | number | null): number | null => {
     return +num;
 };
 
-export const hasNumValue = (num?: number | null): boolean => {
-    if (num === 0) return true;
-    return !!num;
-};
-
 export const isNumNullish = (num?: number | null): num is null => {
     return num === null;
 };
@@ -159,4 +164,137 @@ export const findFocusableEl = (container: HTMLElement | null): HTMLElement | un
         return elArr[0];
     }
     return undefined;
+};
+
+/**
+ * Create array for the SelectionOverlay grouped by 3
+ */
+export const getGroupedList = (items: IDefaultSelect[]): IDefaultSelect[][] => {
+    const list = [];
+    const setList = (listItems: IDefaultSelect[]) => {
+        return listItems.filter((item) => item);
+    };
+    for (let i = 0; i < items.length; i += 3) {
+        const listItems = [items[i], items[i + 1], items[i + 2]];
+        list.push(setList(listItems));
+    }
+    return list;
+};
+
+/**
+ * Check if number is between min and max values
+ */
+export const checkMinMaxValue = (value: number | string, min?: number, max?: number): boolean => {
+    const hasMax = max !== undefined && max !== null;
+    const hasMin = min !== undefined && min !== null;
+
+    if (!hasMax && !hasMin) return false;
+
+    const maxVal = +(max as number);
+    const minVal = +(min as number);
+
+    if (hasMax && hasMin) {
+        return +value > maxVal || +value < minVal;
+    }
+    if (hasMax) {
+        return +value > maxVal;
+    }
+
+    if (hasMin) {
+        return +value < minVal;
+    }
+
+    return false;
+};
+
+/**
+ * Maps data for the SelectionOverlay
+ */
+export const groupListAndMap = (
+    list: IDefaultSelect[],
+    cb: (item: IDefaultSelect) => { active: boolean; disabled: boolean; highlighted?: boolean; isBetween?: boolean },
+): OverlayGridItem[][] => {
+    return getGroupedList(list).map((items) => {
+        return items.map((item) => {
+            const { active, disabled, isBetween, highlighted } = cb(item);
+            return {
+                ...item,
+                active,
+                disabled: disabled,
+                className: {
+                    dp__overlay_cell_active: active,
+                    dp__overlay_cell: !active,
+                    dp__overlay_cell_disabled: disabled,
+                    dp__overlay_cell_pad: true,
+                    dp__overlay_cell_active_disabled: disabled && active,
+                    dp__cell_in_between: isBetween,
+                    'dp--highlighted': highlighted,
+                },
+            };
+        });
+    });
+};
+
+export const checkStopPropagation = (ev: Event | undefined, config: Config, immediate = false) => {
+    if (ev && config.allowStopPropagation) {
+        if (immediate) {
+            ev.stopImmediatePropagation();
+        }
+        ev.stopPropagation();
+    }
+};
+
+const getFocusableElementsSelector = () =>
+    [
+        'a[href]',
+        'area[href]',
+        "input:not([disabled]):not([type='hidden'])",
+        'select:not([disabled])',
+        'textarea:not([disabled])',
+        'button:not([disabled])',
+        "[tabindex]:not([tabindex='-1'])",
+        '[data-datepicker-instance]',
+    ].join(', ');
+
+export function findNextFocusableElement(startingElement: HTMLElement, reverse: boolean) {
+    let focusable = [...document.querySelectorAll(getFocusableElementsSelector())];
+
+    focusable = focusable.filter((elem) => {
+        return !startingElement.contains(elem) || elem.hasAttribute('data-datepicker-instance');
+    });
+
+    const currentIndex = focusable.indexOf(startingElement);
+
+    if (currentIndex >= 0 && (reverse ? currentIndex - 1 >= 0 : currentIndex + 1 <= focusable.length)) {
+        return focusable[currentIndex + (reverse ? -1 : 1)] as HTMLElement;
+    }
+}
+
+export const getElWithin = (wrapper: HTMLElement | null, attribute: DPElements): HTMLElement | undefined | null => {
+    return wrapper?.querySelector(`[data-dp-element="${attribute}"]`);
+};
+
+export const formatNumber = (num: number, locale: string): string => {
+    return new Intl.NumberFormat(locale, { useGrouping: false, style: 'decimal' }).format(num);
+};
+
+export const getMapKey = (date: Date | string | number) => {
+    return format(date, 'dd-MM-yyyy');
+};
+
+export const shouldMap = (arr: any): arr is Date[] | string[] | boolean => {
+    return Array.isArray(arr);
+};
+
+export const getMapDate = <T>(date: Date, map: Map<string, T>): T | undefined => {
+    return map.get(getMapKey(date));
+};
+
+export const matchDate = (date: Date, mapOrFn: Map<string, any> | ((date: Date) => boolean) | null) => {
+    if (!date) return true;
+    if (!mapOrFn) return false;
+    if (mapOrFn instanceof Map) {
+        return !!getMapDate(date, mapOrFn);
+    }
+    return mapOrFn(getDate(date));
 };

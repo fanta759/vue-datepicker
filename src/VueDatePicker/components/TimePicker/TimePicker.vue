@@ -1,26 +1,31 @@
 <template>
-    <div>
+    <div class="dp--tp-wrap">
         <button
-            type="button"
             v-if="!timePicker && !timePickerInline"
-            v-show="!hideNavigationButtons('time')"
-            :class="toggleButtonClass"
-            :aria-label="defaults.ariaLabels?.openTimePicker"
-            tabindex="0"
-            data-test="open-time-picker-btn"
+            v-show="!hideNavigationButtons(hideNavigation, 'time')"
             ref="openTimePickerBtn"
+            type="button"
+            :class="toggleButtonClass"
+            :aria-label="defaultedAriaLabels?.openTimePicker"
+            :tabindex="noOverlayFocus ? undefined : 0"
+            data-test="open-time-picker-btn"
             @keydown.enter="toggleTimePicker(true)"
             @keydown.space="toggleTimePicker(true)"
             @click="toggleTimePicker(true)"
         >
-            <slot name="clock-icon" v-if="$slots['clock-icon']" />
+            <slot v-if="$slots['clock-icon']" name="clock-icon" />
             <ClockIcon v-if="!$slots['clock-icon']" />
         </button>
         <transition :name="transitionName(showTimePicker)" :css="showTransition && !timePickerInline">
             <div
                 v-if="showTimePicker || timePicker || timePickerInline"
-                :class="{ dp__overlay: !timePickerInline }"
                 ref="overlayRef"
+                :class="{
+                    dp__overlay: !timePickerInline,
+                    'dp--overlay-absolute': !props.timePicker && !timePickerInline,
+                    'dp--overlay-relative': props.timePicker,
+                }"
+                :style="timePicker ? { height: `${defaultedConfig.modeHeight}px` } : undefined"
                 :tabindex="timePickerInline ? undefined : 0"
             >
                 <div
@@ -32,8 +37,8 @@
                     style="display: flex"
                 >
                     <slot
-                        name="time-picker-overlay"
                         v-if="$slots['time-picker-overlay']"
+                        name="time-picker-overlay"
                         :hours="hours"
                         :minutes="minutes"
                         :seconds="seconds"
@@ -45,8 +50,8 @@
                         <div :class="timePickerInline ? 'dp__flex' : 'dp__overlay_row dp__flex_row'">
                             <TimeInput
                                 v-for="(tInput, index) in timeInputs"
-                                :key="index"
                                 v-show="index === 0 ? true : shouldShowRangedInput"
+                                :key="index"
                                 v-bind="{
                                     ...$props,
                                     order: index,
@@ -54,9 +59,13 @@
                                     minutes: tInput.minutes,
                                     seconds: tInput.seconds,
                                     closeTimePickerBtn,
+                                    disabledTimesConfig,
                                     disabled: index === 0 ? fixedStart : fixedEnd,
                                 }"
                                 ref="timeInputRefs"
+                                :validate-time="
+                                    (type: TimeType, value: number) => validateTime(type, getEvent(value, index, type))
+                                "
                                 @update:hours="updateHours(getEvent($event, index, 'hours'))"
                                 @update:minutes="updateMinutes(getEvent($event, index, 'minutes'))"
                                 @update:seconds="updateSeconds(getEvent($event, index, 'seconds'))"
@@ -71,18 +80,18 @@
                         </div>
                     </template>
                     <button
-                        type="button"
                         v-if="!timePicker && !timePickerInline"
-                        v-show="!hideNavigationButtons('time')"
+                        v-show="!hideNavigationButtons(hideNavigation, 'time')"
                         ref="closeTimePickerBtn"
+                        type="button"
                         :class="toggleButtonClass"
-                        :aria-label="defaults.ariaLabels?.closeTimePicker"
+                        :aria-label="defaultedAriaLabels?.closeTimePicker"
                         tabindex="0"
                         @keydown.enter="toggleTimePicker(false)"
                         @keydown.space="toggleTimePicker(false)"
                         @click="toggleTimePicker(false)"
                     >
-                        <slot name="calendar-icon" v-if="$slots['calendar-icon']" />
+                        <slot v-if="$slots['calendar-icon']" name="calendar-icon" />
                         <CalendarIcon v-if="!$slots['calendar-icon']" />
                     </button>
                 </div>
@@ -98,11 +107,17 @@
     import TimeInput from '@/components/TimePicker/TimeInput.vue';
 
     import { findFocusableEl, isModelAuto, unrefElement } from '@/utils/util';
-    import { mapSlots, useTransitions, useArrowNavigation, useUtils } from '@/composables';
-    import { AllProps } from '@/props';
+    import { mapSlots, useTransitions, useArrowNavigation, useDefaults, useCommon } from '@/composables';
+    import { PickerBaseProps } from '@/props';
 
     import type { PropType } from 'vue';
-    import type { TimeInputRef, InternalModuleValue } from '@/interfaces';
+    import type { DisabledTimesArrProp, TimeInputRef, TimeType } from '@/interfaces';
+
+    defineOptions({
+        compatConfig: {
+            MODE: 3,
+        },
+    });
 
     const emit = defineEmits([
         'update:hours',
@@ -119,15 +134,22 @@
         hours: { type: [Number, Array] as PropType<number | number[]>, default: 0 },
         minutes: { type: [Number, Array] as PropType<number | number[]>, default: 0 },
         seconds: { type: [Number, Array] as PropType<number | number[]>, default: 0 },
-        internalModelValue: { type: [Date, Array] as PropType<InternalModuleValue>, default: null },
-        ...AllProps,
+        disabledTimesConfig: { type: Function as PropType<DisabledTimesArrProp>, default: null },
+        validateTime: {
+            type: Function as PropType<(type: TimeType, value: number | number[]) => boolean>,
+            default: () => false,
+        },
+        ...PickerBaseProps,
     });
 
     const { buildMatrix, setTimePicker } = useArrowNavigation();
     const slots = useSlots();
-    const { hideNavigationButtons, defaults } = useUtils(props);
 
-    const { transitionName, showTransition } = useTransitions(defaults.value.transitions);
+    const { defaultedTransitions, defaultedAriaLabels, defaultedTextInput, defaultedConfig, defaultedRange } =
+        useDefaults(props);
+    const { transitionName, showTransition } = useTransitions(defaultedTransitions);
+    const { hideNavigationButtons } = useCommon();
+
     const openTimePickerBtn = ref(null);
     const closeTimePickerBtn = ref(null);
     const timeInputRefs = ref<TimeInputRef[]>([]);
@@ -143,7 +165,7 @@
     });
 
     const shouldShowRangedInput = computed(() => {
-        if (props.range && props.modelAuto) return isModelAuto(props.internalModelValue);
+        if (defaultedRange.value.enabled && props.modelAuto) return isModelAuto(props.internalModelValue);
         return true;
     });
 
@@ -159,7 +181,7 @@
 
     const timeInputs = computed((): { hours: number; minutes: number; seconds: number }[] => {
         const arr = [];
-        if (props.range) {
+        if (defaultedRange.value.enabled) {
             for (let i = 0; i < 2; i++) {
                 arr.push(getTimeInput(i));
             }
@@ -191,13 +213,13 @@
     const toggleButtonClass = computed(() => ({
         dp__btn: true,
         dp__button: true,
-        dp__button_bottom: props.autoApply && !props.keepActionRow,
+        dp__button_bottom: props.autoApply && !defaultedConfig.value.keepActionRow,
     }));
 
     const timeInputSlots = mapSlots(slots, 'timePicker');
 
     const getEvent = (event: number, index: number, property: 'hours' | 'minutes' | 'seconds') => {
-        if (!props.range) {
+        if (!defaultedRange.value.enabled) {
             return event;
         }
         if (index === 0) {
@@ -219,7 +241,7 @@
     };
 
     const focusOverlay = () => {
-        if (overlayRef.value) {
+        if (overlayRef.value && !defaultedTextInput.value.enabled && !props.noOverlayFocus) {
             const el = findFocusableEl(overlayRef.value);
             if (el) {
                 el.focus({ preventScroll: true });

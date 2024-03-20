@@ -1,49 +1,83 @@
 import { ref, toRef, watch } from 'vue';
-import { format, getHours, getMinutes, getMonth, getSeconds, getYear, parse, setYear } from 'date-fns';
+import { addHours, format, getHours, getMinutes, getMonth, getSeconds, getYear, parse, set, setYear } from 'date-fns';
 
-import { dateToUtc, getDate, setDateTime } from '@/utils/date-utils';
+import {
+    checkPartialRangeValue,
+    checkRangeEnabled,
+    dateToUtc,
+    formatDate,
+    getDate,
+    getWeekFromDate,
+    isValidDate,
+    setDateMonthOrYear,
+    setDateTime,
+} from '@/utils/date-utils';
 import { convertType, errors } from '@/utils/util';
-import { useUtils } from '@/composables/index';
+import { useDefaults } from '@/composables/defaults';
 
 import type { ModelValue, VueEmit, TimeModel, MonthModel, ModelTypeConverted } from '@/interfaces';
 import type { AllPropsType } from '@/props';
 import type { Ref } from 'vue';
+import { getTimezoneOffset, localToTz } from '@/utils/timezone';
 
 /**
  * Handles values from external to internal and vise versa
  */
 export const useExternalInternalMapper = (emit: VueEmit, props: AllPropsType, isInputFocused: Ref<boolean>) => {
     const internalModelValue = ref();
-    const {
-        getZonedToUtc,
-        getZonedDate,
-        formatDate,
-        getDefaultPattern,
-        checkRangeEnabled,
-        checkPartialRangeValue,
-        isValidDate,
-        setDateMonthOrYear,
-        defaults,
-    } = useUtils(props);
+
+    const { defaultedTextInput, defaultedRange, defaultedTz, defaultedMultiDates, getDefaultPattern } =
+        useDefaults(props);
 
     const inputValue = ref('');
     const formatRef = toRef(props, 'format');
 
-    watch(internalModelValue, () => {
-        emit('internal-model-change', internalModelValue.value);
-    });
+    watch(
+        internalModelValue,
+        () => {
+            emit('internal-model-change', internalModelValue.value);
+        },
+        { deep: true },
+    );
 
     watch(formatRef, () => {
         formatInputValue();
     });
 
-    const getTimeVal = (date?: Date): TimeModel | ModelTypeConverted => {
-        const dateValue = date || getDate();
-        if (props.modelType) return toModelType(dateValue);
+    const convertModelToTz = (date: Date) => {
+        if (defaultedTz.value.timezone && defaultedTz.value.convertModel) {
+            return localToTz(date, defaultedTz.value.timezone);
+        }
+        return date;
+    };
+
+    const convertZonedModelToLocal = (date: Date) => {
+        if (defaultedTz.value.timezone && defaultedTz.value.convertModel) {
+            const offset = getTimezoneOffset(defaultedTz.value.timezone);
+            return addHours(date, offset);
+        }
+        return date;
+    };
+
+    const formatDateFn = (value: Date | Date[], customPattern?: string, parser = false) => {
+        return formatDate(
+            value,
+            props.format,
+            props.formatLocale,
+            defaultedTextInput.value.rangeSeparator,
+            props.modelAuto,
+            customPattern ?? getDefaultPattern(),
+            parser,
+        );
+    };
+
+    const getTimeVal = (date?: Date): TimeModel | ModelTypeConverted | null => {
+        if (!date) return null;
+        if (props.modelType) return toModelType(date);
         return {
-            hours: getHours(dateValue),
-            minutes: getMinutes(dateValue),
-            seconds: props.enableSeconds ? getSeconds(dateValue) : 0,
+            hours: getHours(date),
+            minutes: getMinutes(date),
+            seconds: props.enableSeconds ? getSeconds(date) : 0,
         };
     };
 
@@ -54,10 +88,16 @@ export const useExternalInternalMapper = (emit: VueEmit, props: AllPropsType, is
 
     const mapYearExternalToInternal = (value: number | number[]): Date | Date[] => {
         if (Array.isArray(value)) {
-            return checkRangeEnabled(() => [
-                setYear(getDate(), value[0]),
-                value[1] ? setYear(getDate(), value[1]) : checkPartialRangeValue(),
-            ]);
+            if (defaultedMultiDates.value.enabled) {
+                return value.map((val) => convertCustomModeType(val, setYear(getDate(), val)));
+            }
+            return checkRangeEnabled(
+                () => [
+                    setYear(getDate(), value[0]),
+                    value[1] ? setYear(getDate(), value[1]) : checkPartialRangeValue(defaultedRange.value.partialRange),
+                ],
+                defaultedRange.value.enabled,
+            );
         }
         return setYear(getDate(), +value);
     };
@@ -86,19 +126,25 @@ export const useExternalInternalMapper = (emit: VueEmit, props: AllPropsType, is
     };
 
     const mapMonthExternalToInternal = (value: MonthModel | MonthModel[]): Date | Date[] => {
+        const today = set(getDate(), { date: 1 });
         if (Array.isArray(value)) {
-            if (props.multiDates) {
-                return value.map((val) => convertCustomModeType(val, setDateMonthOrYear(null, +val.month, +val.year)));
+            if (defaultedMultiDates.value.enabled) {
+                return value.map((val) => convertCustomModeType(val, setDateMonthOrYear(today, +val.month, +val.year)));
             }
-            return checkRangeEnabled(() => [
-                convertCustomModeType(value[0], setDateMonthOrYear(null, +value[0].month, +value[0].year)),
-                convertCustomModeType(
-                    value[1],
-                    value[1] ? setDateMonthOrYear(null, +value[1].month, +value[1].year) : checkPartialRangeValue(),
-                ),
-            ]);
+            return checkRangeEnabled(
+                () => [
+                    convertCustomModeType(value[0], setDateMonthOrYear(today, +value[0].month, +value[0].year)),
+                    convertCustomModeType(
+                        value[1],
+                        value[1]
+                            ? setDateMonthOrYear(today, +value[1].month, +value[1].year)
+                            : checkPartialRangeValue(defaultedRange.value.partialRange),
+                    ),
+                ],
+                defaultedRange.value.enabled,
+            );
         }
-        return convertCustomModeType(value, setDateMonthOrYear(null, +value.month, +value.year));
+        return convertCustomModeType(value, setDateMonthOrYear(today, +value.month, +value.year));
     };
 
     // Map external multi dates format to internal model value
@@ -111,10 +157,15 @@ export const useExternalInternalMapper = (emit: VueEmit, props: AllPropsType, is
 
     // Map external week picker format to internal model value
     const mapWeekExternalToInternal = (value: Date[]) => {
-        if (Array.isArray(value)) {
-            return [getDate(value[0]), getDate(value[1])];
+        if (Array.isArray(value) && defaultedRange.value.enabled) {
+            const startWeek = value[0];
+            const endWeek = value[1];
+            return [
+                getDate(Array.isArray(startWeek) ? startWeek[0] : null),
+                getDate(Array.isArray(endWeek) ? endWeek[0] : null),
+            ];
         }
-        throw new Error(errors.dateArr('week-picker'));
+        return getDate(value[0]);
     };
 
     // Map external format to internal model value for range and single picker
@@ -125,10 +176,18 @@ export const useExternalInternalMapper = (emit: VueEmit, props: AllPropsType, is
             return props.autoApply ? [parseModelType(value)] : [parseModelType(value), null];
         }
         if (Array.isArray(value)) {
-            return checkRangeEnabled(() => [
-                parseModelType(value[0]),
-                value[1] ? parseModelType(value[1]) : checkPartialRangeValue(),
-            ]);
+            return checkRangeEnabled(
+                () =>
+                    value[1]
+                        ? [
+                              parseModelType(value[0]),
+                              value[1]
+                                  ? parseModelType(value[1])
+                                  : checkPartialRangeValue(defaultedRange.value.partialRange),
+                          ]
+                        : [parseModelType(value[0])],
+                defaultedRange.value.enabled,
+            );
         }
         return parseModelType(value);
     };
@@ -138,8 +197,12 @@ export const useExternalInternalMapper = (emit: VueEmit, props: AllPropsType, is
      * auto add 'null' value as second value
      */
     const sanitizeModelValue = () => {
-        if (Array.isArray(internalModelValue.value) && props.range && internalModelValue.value.length === 1) {
-            internalModelValue.value.push(checkPartialRangeValue());
+        if (
+            Array.isArray(internalModelValue.value) &&
+            defaultedRange.value.enabled &&
+            internalModelValue.value.length === 1
+        ) {
+            internalModelValue.value.push(checkPartialRangeValue(defaultedRange.value.partialRange));
         }
     };
 
@@ -148,7 +211,7 @@ export const useExternalInternalMapper = (emit: VueEmit, props: AllPropsType, is
         const modelValue = internalModelValue.value as Date[];
         return [
             toModelType(modelValue[0]),
-            modelValue[1] ? toModelType(modelValue[1]) : checkPartialRangeValue(),
+            modelValue[1] ? toModelType(modelValue[1]) : checkPartialRangeValue(defaultedRange.value.partialRange),
         ] as Date[];
     };
 
@@ -166,19 +229,19 @@ export const useExternalInternalMapper = (emit: VueEmit, props: AllPropsType, is
     const mapInternalDatesToExternal = () => {
         sanitizeModelValue();
         if (props.modelAuto) return getModelAutoForExternal();
-        if (props.multiDates) return getMultiDatesForExternal();
+        if (defaultedMultiDates.value.enabled) return getMultiDatesForExternal();
         if (Array.isArray(internalModelValue.value)) {
-            return checkRangeEnabled(() => getRangeEmitValue());
+            return checkRangeEnabled(() => getRangeEmitValue(), defaultedRange.value.enabled);
         }
         return toModelType(convertType(internalModelValue.value));
     };
 
     const mapExternalToInternal = (value: ModelValue) => {
-        if (!value) return null;
+        if (!value || (Array.isArray(value) && !value.length)) return null;
         if (props.timePicker) return mapTimeExternalToInternal(convertType(value));
         if (props.monthPicker) return mapMonthExternalToInternal(convertType(value));
         if (props.yearPicker) return mapYearExternalToInternal(convertType(value));
-        if (props.multiDates) return mapMultiDateExternalToInternal(convertType(value));
+        if (defaultedMultiDates.value.enabled) return mapMultiDateExternalToInternal(convertType(value));
         if (props.weekPicker) return mapWeekExternalToInternal(convertType(value));
         return mapDateExternalToInternal(convertType(value));
     };
@@ -200,8 +263,8 @@ export const useExternalInternalMapper = (emit: VueEmit, props: AllPropsType, is
     };
 
     const formatRangeTextInput = () => {
-        const formatter = (value: Date) => format(value, defaults.value.textInputOptions?.format as string);
-        return `${formatter(internalModelValue.value[0])} ${defaults.value.textInputOptions?.rangeSeparator} ${
+        const formatter = (value: Date) => format(value, defaultedTextInput.value.format as string);
+        return `${formatter(internalModelValue.value[0])} ${defaultedTextInput.value.rangeSeparator} ${
             internalModelValue.value[1] ? formatter(internalModelValue.value[1]) : ''
         }`;
     };
@@ -210,17 +273,19 @@ export const useExternalInternalMapper = (emit: VueEmit, props: AllPropsType, is
     const formatForTextInput = () => {
         if (isInputFocused.value && internalModelValue.value) {
             if (Array.isArray(internalModelValue.value)) return formatRangeTextInput();
-            return format(internalModelValue.value, defaults.value.textInputOptions?.format as string);
+            return format(internalModelValue.value, defaultedTextInput.value.format as string);
         }
-        return formatDate(internalModelValue.value);
+        return formatDateFn(internalModelValue.value);
     };
 
     // Get proper input value depending on the mode
     const getInputValue = (): string => {
         if (!internalModelValue.value) return '';
-        if (props.multiDates) return (internalModelValue.value as Date[]).map((date) => formatDate(date)).join('; ');
-        if (props.textInput && typeof defaults.value.textInputOptions?.format === 'string') return formatForTextInput();
-        return formatDate(internalModelValue.value);
+        if (defaultedMultiDates.value.enabled)
+            return (internalModelValue.value as Date[]).map((date) => formatDateFn(date)).join('; ');
+        if (defaultedTextInput.value.enabled && typeof defaultedTextInput.value.format === 'string')
+            return formatForTextInput();
+        return formatDateFn(internalModelValue.value);
     };
 
     /**
@@ -230,11 +295,11 @@ export const useExternalInternalMapper = (emit: VueEmit, props: AllPropsType, is
         if (
             !props.format ||
             typeof props.format === 'string' ||
-            (props.textInput && typeof props.textInputOptions.format === 'string')
+            (defaultedTextInput.value.enabled && typeof defaultedTextInput.value.format === 'string')
         ) {
             inputValue.value = getInputValue();
         } else {
-            inputValue.value = props.format(internalModelValue.value as Date | Date[]);
+            inputValue.value = props.format(internalModelValue.value);
         }
     };
 
@@ -244,15 +309,15 @@ export const useExternalInternalMapper = (emit: VueEmit, props: AllPropsType, is
             return props.utc === 'preserve' ? new Date(toDate.getTime() + toDate.getTimezoneOffset() * 60000) : toDate;
         }
         if (props.modelType) {
-            if (props.modelType === 'date' || props.modelType === 'timestamp') return getZonedDate(new Date(value));
+            if (props.modelType === 'date' || props.modelType === 'timestamp') return convertModelToTz(new Date(value));
 
             if (props.modelType === 'format' && (typeof props.format === 'string' || !props.format))
-                return parse(value as string, getDefaultPattern(), new Date());
+                return convertModelToTz(parse(value as string, getDefaultPattern(), new Date()));
 
-            return getZonedDate(parse(value as string, props.modelType, new Date()));
+            return convertModelToTz(parse(value as string, props.modelType, new Date()));
         }
 
-        return getZonedDate(new Date(value));
+        return convertModelToTz(new Date(value));
     };
 
     const toModelType = (val: Date): string | number | Date => {
@@ -261,18 +326,24 @@ export const useExternalInternalMapper = (emit: VueEmit, props: AllPropsType, is
             return dateToUtc(val, props.utc === 'preserve', props.enableSeconds);
         }
         if (props.modelType) {
-            if (props.modelType === 'timestamp') return +getZonedToUtc(val);
+            if (props.modelType === 'timestamp') return +convertZonedModelToLocal(val);
 
             if (props.modelType === 'format' && (typeof props.format === 'string' || !props.format))
-                return formatDate(getZonedToUtc(val));
+                return formatDateFn(convertZonedModelToLocal(val));
 
-            return formatDate(getZonedToUtc(val), props.modelType);
+            return formatDateFn(convertZonedModelToLocal(val), props.modelType, true);
         }
-        return getZonedToUtc(val);
+        return convertZonedModelToLocal(val);
     };
 
-    const emitValue = (value: ModelValue): void => {
+    const emitValue = (value: ModelValue, useTz = false): void => {
         emit('update:model-value', value);
+        if (defaultedTz.value.emitTimezone && useTz) {
+            const zonedValue = Array.isArray(value)
+                ? value.map((date) => localToTz(convertType(date), defaultedTz.value.emitTimezone))
+                : localToTz(convertType(value), defaultedTz.value.emitTimezone);
+            emit('update:model-timezone-value', zonedValue);
+        }
     };
 
     /**
@@ -281,15 +352,28 @@ export const useExternalInternalMapper = (emit: VueEmit, props: AllPropsType, is
      */
     const mapInternalToSpecificExternal = <T extends (val: Date) => ReturnType<T> | ReturnType<T>[]>(mapper: T) => {
         if (Array.isArray(internalModelValue.value)) {
-            if (props.multiDates) {
+            if (defaultedMultiDates.value.enabled) {
                 return internalModelValue.value.map((value) => mapper(value));
             }
             return [
                 mapper(internalModelValue.value[0]),
-                internalModelValue.value[1] ? mapper(internalModelValue.value[1]) : checkPartialRangeValue(),
+                internalModelValue.value[1]
+                    ? mapper(internalModelValue.value[1])
+                    : checkPartialRangeValue(defaultedRange.value.partialRange),
             ];
         }
         return mapper(convertType(internalModelValue.value));
+    };
+
+    const mapInternalWeekPickerToExternal = () => {
+        if (Array.isArray(internalModelValue.value)) {
+            const startWeek = getWeekFromDate(internalModelValue.value[0], props.weekStart);
+            const endWeek = internalModelValue.value[1]
+                ? getWeekFromDate(internalModelValue.value[1], props.weekStart)
+                : [];
+            return [startWeek.map((date) => getDate(date)), endWeek.map((date) => getDate(date))];
+        }
+        return getWeekFromDate(internalModelValue.value, props.weekStart).map((date) => getDate(date));
     };
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -305,15 +389,15 @@ export const useExternalInternalMapper = (emit: VueEmit, props: AllPropsType, is
         if (props.monthPicker) return modeEmitter(getMonthVal);
         if (props.timePicker) return modeEmitter(getTimeVal);
         if (props.yearPicker) return modeEmitter(getYear);
-        if (props.weekPicker) return emitValue(internalModelValue.value);
-        return emitValue(mapInternalDatesToExternal());
+        if (props.weekPicker) return emit('update:model-value', mapInternalWeekPickerToExternal());
+        return emitValue(mapInternalDatesToExternal(), true);
     };
 
     // Check if there is any selection before emitting value, to prevent null setting
     const checkBeforeEmit = (): boolean => {
         if (internalModelValue.value) {
-            if (props.range) {
-                if (props.partialRange) return internalModelValue.value.length >= 1;
+            if (defaultedRange.value.enabled) {
+                if (defaultedRange.value.partialRange) return internalModelValue.value.length >= 1;
                 return internalModelValue.value.length === 2;
             }
             return !!internalModelValue.value;

@@ -1,3 +1,9 @@
+@import "shared";
+
+.dp--tp-wrap {
+  max-width: var(--dp-menu-min-width);
+}
+
 .dp__time_input {
   width: 100%;
   display: flex;
@@ -48,7 +54,7 @@
   align-items: center;
   justify-content: center;
 
-  &:hover {
+  &:hover:enabled {
     background: var(--dp-hover-color);
     color: var(--dp-hover-text-color);
   }
@@ -156,4 +162,16 @@
     background-color: var(--dp-primary-color);
     transform: rotate(12deg) scale(1.15) translateY(-2px);
   }
+}
+
+.dp--time-overlay-btn {
+  @extend %dp--btn-placeholder;
+
+  background: none;
+}
+
+.dp--time-invalid {
+  @extend %dp--btn-placeholder;
+
+  background-color: var(--dp-disabled-color);
 }

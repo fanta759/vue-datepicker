@@ -1,5 +1,5 @@
 import type { ComponentPublicInstance, Ref } from 'vue';
-import type { AllPropsType } from '@/props';
+import type { HeaderPicker } from '@/constants';
 
 export type DynamicClass = Record<string, boolean | undefined>;
 
@@ -45,6 +45,7 @@ export interface TextInputOptions {
     tabSubmit: boolean;
     openMenu: boolean;
     rangeSeparator: string;
+    selectOnFocus: boolean;
     format?: string | string[] | ((value: string) => Date | null);
 }
 
@@ -84,7 +85,7 @@ export interface ConfigurableWindow {
     window?: Window;
 }
 
-export type MaybeElementRef = MaybeRef<HTMLElement | SVGElement | ComponentPublicInstance | undefined | null>;
+export type MaybeElementRef = MaybeRef<HTMLElement | SVGElement | ComponentPublicInstance | undefined | null | Element>;
 export type OnClickOutsideEvents = Pick<
     WindowEventMap,
     'click' | 'mousedown' | 'mouseup' | 'touchstart' | 'touchend' | 'pointerdown' | 'pointerup'
@@ -102,7 +103,8 @@ export interface IMarker {
 }
 
 export interface Transition {
-    menuAppear: string;
+    menuAppearTop: string;
+    menuAppearBottom: string;
     open: string;
     close: string;
     next: string;
@@ -112,7 +114,9 @@ export interface Transition {
 }
 
 export type IDisableDates = (date: Date) => boolean;
-export type TimeType = 'hours' | 'minutes' | 'seconds';
+export type TimeType = keyof Time;
+
+export type DisabledDatesProp = Date[] | string[] | IDisableDates;
 
 export type CustomAltPosition = (el: HTMLElement | null) => {
     top: number | string;
@@ -120,16 +124,15 @@ export type CustomAltPosition = (el: HTMLElement | null) => {
     transform?: string;
 };
 
-export type PresetRange = { label: string; range: Date[] | string[]; style?: Record<string, string>; slot?: string };
+export type PresetDate = {
+    label: string;
+    value: Date[] | string[] | Date | string;
+    style?: Record<string, string>;
+    slot?: string;
+    noTz?: boolean;
+};
 
 export type Flow = 'month' | 'year' | 'calendar' | 'time' | 'minutes' | 'hours' | 'seconds';
-export type MenuChildCmp = 'timePicker' | 'monthYearInput' | 'calendar';
-
-export interface MonthYearPickerRef {
-    toggleMonthPicker: (auto: boolean, show?: boolean) => void;
-    toggleYearPicker: (auto: boolean, show?: boolean) => void;
-    handleMonthYearChange: (isNext: boolean) => void;
-}
 
 export interface AriaLabels {
     toggleOverlay: string;
@@ -147,15 +150,16 @@ export interface AriaLabels {
     openMonthsOverlay: string;
     nextMonth: string;
     prevMonth: string;
-    day: (dayVal: ICalendarDay) => string;
+    nextYear: string;
+    prevYear: string;
+    day?: (dayVal: ICalendarDay) => string;
+    weekDay?: (day: number) => string;
 }
 
-export interface CalendarRef extends ComponentPublicInstance {
-    triggerTransition: (m: number, year: number) => void;
-}
-
-export interface TimePickerRef extends Element {
-    toggleTimePicker: (show: boolean, flow: boolean, child?: TimeType) => void;
+export interface Time {
+    hours: number | number[];
+    minutes: number | number[];
+    seconds: number | number[];
 }
 
 export interface TimeInputRef extends Element {
@@ -171,20 +175,13 @@ export type ComponentRef = Ref<ComponentPublicInstance | HTMLElement | null>;
 
 export type TimeOverlayCheck = 'noHoursOverlay' | 'noMinutesOverlay' | 'noSecondsOverlay';
 
-export type ModelFormatType = 'timestamp' | 'format';
-
-export type ModelType = ModelFormatType | string;
-
 export type DateTimeSetter = number | string | null;
 
 export type DateValue = Date | string | null;
 
 export type ModelTypeConverted = string | number | Date;
 
-export interface ExtendedProps extends AllPropsType {
-    internalModelValue: InternalModuleValue;
-    arrMapValues?: ArrMapValues;
-}
+export type MaybeDate = Date | string | number | null | undefined;
 
 export interface MonthYearOpt {
     month?: number | string;
@@ -197,7 +194,7 @@ export type DatepickerMenuRef = ComponentPublicInstance<{
 }>;
 
 export type DatepickerInputRef = ComponentPublicInstance<{
-    setParsedDate: (date: Date | Date[]) => void;
+    setParsedDate: (date: Date | Date[] | null) => void;
     focusInput: () => void;
 }>;
 
@@ -214,9 +211,150 @@ export type DisabledTimesFn = (time: TimeObj | TimeObj[] | (TimeObj | undefined)
 
 export type MenuView = 'month' | 'year' | 'calendar' | 'time';
 
-type ArrMapValue = Map<string, boolean> | null;
-export interface ArrMapValues {
-    disabledDates: ArrMapValue;
-    allowedDates: ArrMapValue;
-    highlightedDates: ArrMapValue;
+export interface OverlayGridItem {
+    value: number;
+    text: string;
+    active: boolean;
+    disabled: boolean;
+    className: DynamicClass;
 }
+
+export type PossibleDate = Date | string | number | null;
+
+export interface HeaderSelectionBtn {
+    type: HeaderPicker;
+    index: 1 | 2;
+    toggle: () => void;
+    modelValue: number;
+    updateModelValue: (val: number) => void;
+    text: string | number;
+    showSelectionGrid: boolean;
+    items: OverlayGridItem[][];
+    ariaLabel: string;
+}
+
+export type MenuExposedFn = 'selectCurrentDate' | 'presetDate' | 'clearHoverDate' | 'handleArrow' | 'updateMonthYear';
+
+export type OptionEnabled = boolean | number | string;
+
+export interface MultiCalendarsOptions {
+    static: boolean;
+    solo: boolean;
+    count: number;
+}
+
+export type MultiCalendarsProp = OptionEnabled | Partial<MultiCalendarsOptions>;
+
+export interface DisabledTime {
+    hours: number | string;
+    minutes: number | string;
+    seconds?: number | string;
+}
+
+export type DisabledTimeArrProp = DisabledTimesFn | DisabledTime[] | DisabledTime[][];
+
+export interface TimeValuesInv {
+    hours: number[];
+    minutes?: number[];
+    seconds?: (number | undefined)[];
+}
+
+export type TextInputProp = boolean | Partial<TextInputOptions>;
+
+export interface InlineOptions {
+    enabled: boolean;
+    input: boolean;
+}
+
+export type InlineProp = boolean | { input?: boolean };
+
+export type DisabledTimesArrProp = (ind: number, hours?: number) => TimeValuesInv;
+
+export interface Config {
+    allowStopPropagation: boolean;
+    closeOnScroll: boolean;
+    modeHeight: number;
+    allowPreventDefault: boolean;
+    closeOnClearValue: boolean;
+    closeOnAutoApply: boolean;
+    noSwipe: boolean;
+    keepActionRow: boolean;
+    onClickOutside?: (validate: () => boolean) => void;
+    tabOutClosesMenu: boolean;
+}
+
+export interface Highlight {
+    dates: Date[];
+    years: number[];
+    months: MonthModel[];
+    quarters: { quarter: number; year: number }[];
+    weekdays: number[];
+    options: { highlightDisabled: boolean };
+}
+
+export type HighlightFn = (
+    date: Date | MonthModel | number | { quarter: number; year: number },
+    disabled?: boolean,
+) => boolean;
+
+export type HighlightProp = HighlightFn | Partial<Highlight>;
+
+export interface WeekNumbersOpts {
+    type: 'iso' | 'local' | ((date: Date) => string | number);
+    hideOnOffsetDates?: boolean;
+}
+
+export type WeekNumbersProp = 'iso' | 'local' | ((date: Date) => string | number) | WeekNumbersOpts;
+
+export type DPElements = 'action-row';
+
+export interface RangeOpts {
+    noDisabledRange: boolean;
+    showLastInRange: boolean;
+    minMaxRawRange: boolean;
+    partialRange: boolean;
+    disableTimeRangeValidation: boolean;
+    fixedStart: boolean;
+    fixedEnd: boolean;
+    maxRange?: string | number;
+    minRange?: string | number;
+    autoRange?: string | number;
+}
+
+export interface RangeConfig extends RangeOpts {
+    enabled: boolean;
+}
+
+export type RangeProp = boolean | Partial<RangeOpts>;
+
+export interface TimeZoneConfig {
+    timezone: string | undefined;
+    exactMatch: boolean;
+    dateInTz?: string;
+    emitTimezone?: string;
+    convertModel?: boolean;
+}
+
+export type TimeZoneProp = string | Partial<TimeZoneConfig>;
+
+export interface PropDates {
+    maxDate: Date | null;
+    minDate: Date | null;
+    disabledDates: Map<string, Date | null> | ((date: Date) => boolean) | null;
+    allowedDates: Map<string, Date | null> | null;
+    highlight: Map<string, Date | null> | ((date: Date) => boolean) | null;
+    markers: Map<string, IMarker> | null;
+}
+
+export interface MultiDatesConfig {
+    limit: number | string;
+    dragSelect: boolean;
+}
+
+export interface MultiDatesDefault {
+    limit: number | null;
+    dragSelect: boolean;
+    enabled: boolean;
+}
+
+export type MultiDatesProp = boolean | Partial<MultiDatesConfig>;
